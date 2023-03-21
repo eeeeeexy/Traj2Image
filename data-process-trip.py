@@ -289,8 +289,6 @@ def traj_to_image_shift(traj_data, max_class_all_gap, min_class_all_gap, shift, 
                     time_count += 1
         
         elif fixed == False:
-            
-
             all_lat = max(lat) - min(lat)
             all_lon = max(lon) - min(lon)
             sub_lat = (all_lat / pixel_size) * 1.05
@@ -420,7 +418,8 @@ def traj_to_image_shift(traj_data, max_class_all_gap, min_class_all_gap, shift, 
     
     return TITS_image_1feature, TITS_image_2feature, TITS_image_3feature, TITS_image_3feature2, TITS_image_4feature, TITS_image_5feature, TITS_image_6feature, label_list
 
-def traj_to_image_shift_scale(traj_data, shift):
+
+def traj_to_image_shift_scale(traj_data, shift, lat_scale_list, lon_scale_list):
 
     default_pixel = 0
     count = 0
@@ -579,6 +578,9 @@ def traj_to_image_shift_scale(traj_data, shift):
         # img_path = 'init_image_class_fixed_pixel%d_%d.png'%(pixel_size, count)
         # print(img_path)
         # fig.savefig(img_path)
+
+        s50_lat = lat_scale_list[1]
+        s50_lon = lon_scale_list[1]
 
         global_ = {0: 0.003798, 1: 0.003862}
         self_lat = (max(lat) - min(lat))
@@ -781,6 +783,390 @@ def traj_to_image_shift_scale(traj_data, shift):
     return TITS_image_1feature, TITS_image_2feature, TITS_image_3feature, TITS_image_3feature2, TITS_image_4feature, TITS_image_5feature, TITS_image_6feature, label_list, scalesize_list
 
 
+def feature_array(index, trip, scale_, max_lat, max_lon, min_points):
+    default_pixel = 0
+    # self size image
+    shape_array = np.zeros((pixel_size, pixel_size))
+    count_array_final = np.zeros((pixel_size, pixel_size))
+    count_array = np.zeros((pixel_size, pixel_size))
+    speed_array_final = np.zeros((pixel_size, pixel_size))
+    bearing_array_final = np.zeros((pixel_size, pixel_size))
+    bearing_rate_array_final = np.zeros((pixel_size, pixel_size))
+    deltatime_array_final = np.zeros((pixel_size, pixel_size))
+    acc_array_final = np.zeros((pixel_size, pixel_size))
+
+    # speed
+    speed_array = defaultdict(lambda  : defaultdict(list))
+    for i in range(pixel_size):
+        for j in range(pixel_size):
+            speed_array[i][j] = []
+    # bearing
+    bearing_array = defaultdict(lambda  : defaultdict(list))
+    for i in range(pixel_size):
+        for j in range(pixel_size):
+            bearing_array[i][j] = []
+    # bearing rate
+    bearing_rate_array = defaultdict(lambda  : defaultdict(list))
+    for i in range(pixel_size):
+        for j in range(pixel_size):
+            bearing_rate_array[i][j] = []
+    # delta time
+    delta_time_array = defaultdict(lambda  : defaultdict(list))
+    for i in range(pixel_size):
+        for j in range(pixel_size):
+            delta_time_array[i][j] = []
+    # acc
+    acc_array = defaultdict(lambda  : defaultdict(list))
+    for i in range(pixel_size):
+        for j in range(pixel_size):
+            acc_array[i][j] = []
+    
+    # [delta_time, speed, bearing, acc, x_coord, y_coord]
+    lat = trip[0][-2]
+    lon = trip[0][-1]
+    delta_time = trip[0][0]
+    speed = trip[0][1]
+    bearing = trip[0][2]
+    acc = trip[0][3]
+    bearing_rate = trip[0][4]
+
+    start_point = (min(lat), min(lon))
+
+    lat_id = []
+    lon_id = []
+    speed_id = []
+    bearing_id = []
+    bearing_rate_id = []
+    deltatime_id = []
+    acc_id = []
+    time_count = 0
+
+    if scale_ == 0:
+        all_lat = max(lat) - min(lat)
+        all_lon = max(lon) - min(lon)
+    else:
+        all_lat = max_lat
+        all_lon = max_lon
+
+    sub_lat = (all_lat / pixel_size) * 1.05
+    sub_lon = (all_lon / pixel_size) * 1.05
+    if sub_lat == 0 or sub_lon == 0:
+        return 0
+    for point in zip(lat, lon):
+        if int((point[0] - start_point[0])/sub_lat) <= pixel_size - 1 and int((point[1] - start_point[1])/sub_lon) <= pixel_size - 1:
+            lat_id.append(int((point[0] - start_point[0])/sub_lat))
+            lon_id.append(int((point[1] - start_point[1])/sub_lon))
+            speed_id.append(speed[lat.index(point[0])])
+            bearing_id.append(bearing[lat.index(point[0])])
+            bearing_rate_id.append(bearing_rate[lat.index(point[0])])
+            deltatime_id.append(delta_time[lat.index(point[0])])
+            acc_id.append(acc[lat.index(point[0])])
+            time_count += 1
+
+    print(index, len(lat_id), len(lon_id), len(speed_id), len(bearing_id), len(deltatime_id), len(acc_id), len(bearing_rate_id))
+
+    lat_lon_id = list(zip(lon_id, lat_id, speed_id, bearing_id, deltatime_id, acc_id, bearing_rate_id))
+
+    if len(lat_id) < min_points:
+        return [], [], [], [], [], []
+
+    for id in lat_lon_id:
+        shape_array[id[0]][id[1]] = 1
+    nonzero_array = np.nonzero(shape_array)
+    shape_array = np.zeros((pixel_size, pixel_size))
+
+    if pixel_size - max(nonzero_array[0]) > 0 and pixel_size - max(nonzero_array[1]) > 0:
+        lat_shift = int((pixel_size - max(nonzero_array[0])) / 2)
+        lon_shift = int((pixel_size - max(nonzero_array[1])) / 2)
+        for id in lat_lon_id:
+            shape_array[id[0]+lat_shift][id[1]+lon_shift] = 1
+            count_array[id[0]+lat_shift][id[1]+lon_shift] += 1
+            speed_array[id[0]+lat_shift][id[1]+lon_shift].append(id[2])
+            bearing_array[id[0]+lat_shift][id[1]+lon_shift].append(id[3])
+            delta_time_array[id[0]+lat_shift][id[1]+lon_shift].append(id[4])
+            acc_array[id[0]+lat_shift][id[1]+lon_shift].append(id[5])
+            bearing_rate_array[id[0]+lat_shift][id[1]+lon_shift].append(id[6])
+    elif pixel_size - max(nonzero_array[0]) > 0 and pixel_size - max(nonzero_array[1]) <= 0:
+        lat_shift = int((pixel_size - max(nonzero_array[0])) / 2)
+        for id in lat_lon_id:
+            shape_array[id[0]+lat_shift][id[1]] = 1
+            count_array[id[0]+lat_shift][id[1]] += 1
+            speed_array[id[0]+lat_shift][id[1]].append(id[2])
+            bearing_array[id[0]+lat_shift][id[1]].append(id[3])
+            delta_time_array[id[0]+lat_shift][id[1]].append(id[4])
+            acc_array[id[0]+lat_shift][id[1]].append(id[5])
+            bearing_rate_array[id[0]+lat_shift][id[1]].append(id[6])
+    elif pixel_size - max(nonzero_array[0]) <= 0 and pixel_size - max(nonzero_array[1]) > 0:
+        lon_shift = int((pixel_size - max(nonzero_array[1])) / 2)
+        for id in lat_lon_id:
+            shape_array[id[0]][id[1]+lon_shift] = 1
+            count_array[id[0]][id[1]+lon_shift] += 1
+            speed_array[id[0]][id[1]+lon_shift].append(id[2])
+            bearing_array[id[0]][id[1]+lon_shift].append(id[3])
+            delta_time_array[id[0]][id[1]+lon_shift].append(id[4])
+            acc_array[id[0]][id[1]+lon_shift].append(id[5])
+            bearing_rate_array[id[0]][id[1]+lon_shift].append(id[6])
+    else:
+        for id in lat_lon_id:
+            shape_array[id[0]][id[1]] = 1
+            count_array[id[0]][id[1]] += 1
+            speed_array[id[0]][id[1]].append(id[2])
+            bearing_array[id[0]][id[1]].append(id[3])
+            delta_time_array[id[0]][id[1]].append(id[4])
+            acc_array[id[0]][id[1]].append(id[5])
+            bearing_rate_array[id[0]][id[1]].append(id[6])
+
+    # print('-->final normalized image')
+    for i in range(pixel_size):
+        for j in range(pixel_size):
+            if len(speed_array[i][j]) == 0:
+                count_array[i][j] = default_pixel
+                speed_array_final[i][j] = default_pixel
+                bearing_array_final[i][j] = default_pixel
+                deltatime_array_final[i][j] = default_pixel
+                acc_array_final[i][j] = default_pixel
+                bearing_rate_array_final[i][j] = default_pixel
+                # print(i, j, acc_array[i][j], acc_array_final[i][j])
+            else:
+                speed_array_final[i][j] = np.array(speed_array[i][j]).mean()
+                bearing_array_final[i][j] = np.array(bearing_array[i][j]).mean()
+                deltatime_array_final[i][j] = np.array(delta_time_array[i][j]).mean()
+                acc_array_final[i][j] = np.array(acc_array[i][j]).mean()
+                bearing_rate_array_final[i][j] = np.array(bearing_rate_array[i][j]).mean()
+                # print(i, j, acc_array_final[i][j], speed_array_final[i][j], time_array_final[i][j])
+    count_array_final = count_array_final /count_array.max()
+
+    return speed_array_final, bearing_array_final, acc_array_final, deltatime_array_final, count_array_final, bearing_rate_array_final
+
+
+def traj_to_image_shift_multiscale_all(traj_data, lat_scale_list, lon_scale_list):
+
+    count = 0
+    label_list = []
+
+    # 20
+    TITS_image_1feature_20 = []
+    TITS_image_2feature_20 = []
+    TITS_image_3feature_20 = []
+    TITS_image_3feature2_20 = []
+    TITS_image_4feature_20 = []
+    TITS_image_5feature_20 = []
+    TITS_image_6feature_20 = []
+
+    # 50
+    TITS_image_1feature_50 = []
+    TITS_image_2feature_50 = []
+    TITS_image_3feature_50 = []
+    TITS_image_3feature2_50 = []
+    TITS_image_4feature_50 = []
+    TITS_image_5feature_50 = []
+    TITS_image_6feature_50 = []
+
+    # 80
+    TITS_image_1feature_80 = []
+    TITS_image_2feature_80 = []
+    TITS_image_3feature_80 = []
+    TITS_image_3feature2_80 = []
+    TITS_image_4feature_80 = []
+    TITS_image_5feature_80 = []
+    TITS_image_6feature_80 = []
+    
+    for index, trip in enumerate(traj_data):
+        
+        # self
+        max_lat = lat_scale_list[1]
+        max_lon = lon_scale_list[1]
+        speed_array_final_self, bearing_array_final_self, acc_array_final_self, deltatime_array_final_self, \
+            count_array_self, bearing_rate_array_final_self = feature_array(index=index, trip=trip, scale_=0, max_lat=max_lat, max_lon=max_lon, min_points=50)
+        # initial image
+
+        # 20%
+        max_lat = lat_scale_list[0]
+        max_lon = lon_scale_list[0]
+        scale_ = 20
+        speed_array_final_20, bearing_array_final_20, acc_array_final_20, deltatime_array_final_20, \
+            count_array_20, bearing_rate_array_final_20 = feature_array(index=index, trip=trip, scale_=scale_, max_lat=max_lat, max_lon=max_lon, min_points=50)
+
+        # 50%
+        max_lat = lat_scale_list[1]
+        max_lon = lon_scale_list[1]
+        scale_ = 50
+        speed_array_final_50, bearing_array_final_50, acc_array_final_50, deltatime_array_final_50, \
+            count_array_50, bearing_rate_array_final_50 = feature_array(index=index, trip=trip, scale_=scale_, max_lat=max_lat, max_lon=max_lon, min_points=50)
+
+        # 80%
+        max_lat = lat_scale_list[2]
+        max_lon = lon_scale_list[2]
+        scale_ = 80
+        speed_array_final_80, bearing_array_final_80, acc_array_final_80, deltatime_array_final_80, \
+            count_array_80, bearing_rate_array_final_80 = feature_array(index=index, trip=trip, scale_=scale_, max_lat=max_lat, max_lon=max_lon, min_points=50)
+        
+        visualize = False
+        if visualize:
+            image_count = 0
+            fig = plt.figure()
+            fig.set_facecolor('white')
+            grid_shift = axes_grid1.AxesGrid(
+                fig, 111, nrows_ncols=(4, 6), axes_pad = 0.5, cbar_location = "right",
+                cbar_mode="each", cbar_size="15%", cbar_pad="5%",) 
+            im0 = grid_shift[image_count].imshow(speed_array_final_self, cmap='jet', interpolation='nearest')
+            grid_shift.cbar_axes[0].colorbar(im0)
+            im1 = grid_shift[image_count+1].imshow(bearing_array_final_self, cmap='jet', interpolation='nearest')
+            grid_shift.cbar_axes[1].colorbar(im1)
+            im2 = grid_shift[image_count+2].imshow(acc_array_final_self, cmap='jet', interpolation='nearest')
+            grid_shift.cbar_axes[2].colorbar(im2)
+            im3 = grid_shift[image_count+3].imshow(deltatime_array_final_self, cmap='jet', interpolation='nearest')
+            grid_shift.cbar_axes[3].colorbar(im3)
+            im4 = grid_shift[image_count+4].imshow(count_array_self, cmap='jet', interpolation='nearest')
+            grid_shift.cbar_axes[4].colorbar(im4)
+            im5 = grid_shift[image_count+5].imshow(bearing_rate_array_final_self, cmap='jet', interpolation='nearest')
+            grid_shift.cbar_axes[5].colorbar(im5)
+            # rescale image
+            image_count = 6
+            im6 = grid_shift[image_count].imshow(speed_array_final_20, cmap='jet', interpolation='nearest')
+            grid_shift.cbar_axes[6].colorbar(im6)
+            im7 = grid_shift[image_count+1].imshow(bearing_array_final_20, cmap='jet', interpolation='nearest')
+            grid_shift.cbar_axes[7].colorbar(im7)
+            im8 = grid_shift[image_count+2].imshow(acc_array_final_20, cmap='jet', interpolation='nearest')
+            grid_shift.cbar_axes[8].colorbar(im8)
+            im9 = grid_shift[image_count+3].imshow(deltatime_array_final_20, cmap='jet', interpolation='nearest')
+            grid_shift.cbar_axes[9].colorbar(im9)
+            im10 = grid_shift[image_count+4].imshow(count_array_20, cmap='jet', interpolation='nearest')
+            grid_shift.cbar_axes[10].colorbar(im10)
+            im11 = grid_shift[image_count+5].imshow(bearing_rate_array_final_20, cmap='jet', interpolation='nearest')
+            grid_shift.cbar_axes[11].colorbar(im11)
+            # rescale image
+            image_count = 12
+            im12 = grid_shift[image_count].imshow(speed_array_final_50, cmap='jet', interpolation='nearest')
+            grid_shift.cbar_axes[12].colorbar(im12)
+            im13 = grid_shift[image_count+1].imshow(bearing_array_final_50, cmap='jet', interpolation='nearest')
+            grid_shift.cbar_axes[13].colorbar(im13)
+            im14 = grid_shift[image_count+2].imshow(acc_array_final_50, cmap='jet', interpolation='nearest')
+            grid_shift.cbar_axes[14].colorbar(im14)
+            im15 = grid_shift[image_count+3].imshow(deltatime_array_final_50, cmap='jet', interpolation='nearest')
+            grid_shift.cbar_axes[15].colorbar(im15)
+            im16 = grid_shift[image_count+4].imshow(count_array_50, cmap='jet', interpolation='nearest')
+            grid_shift.cbar_axes[16].colorbar(im16)
+            im17 = grid_shift[image_count+5].imshow(bearing_rate_array_final_50, cmap='jet', interpolation='nearest')
+            grid_shift.cbar_axes[17].colorbar(im17)
+            # rescale image
+            image_count = 18
+            im18 = grid_shift[image_count].imshow(speed_array_final_80, cmap='jet', interpolation='nearest')
+            grid_shift.cbar_axes[18].colorbar(im18)
+            im19 = grid_shift[image_count+1].imshow(bearing_array_final_80, cmap='jet', interpolation='nearest')
+            grid_shift.cbar_axes[19].colorbar(im19)
+            im20 = grid_shift[image_count+2].imshow(acc_array_final_80, cmap='jet', interpolation='nearest')
+            grid_shift.cbar_axes[20].colorbar(im20)
+            im21 = grid_shift[image_count+3].imshow(deltatime_array_final_80, cmap='jet', interpolation='nearest')
+            grid_shift.cbar_axes[21].colorbar(im21)
+            im22 = grid_shift[image_count+4].imshow(count_array_80, cmap='jet', interpolation='nearest')
+            grid_shift.cbar_axes[22].colorbar(im22)
+            im23 = grid_shift[image_count+5].imshow(bearing_rate_array_final_80, cmap='jet', interpolation='nearest')
+            grid_shift.cbar_axes[23].colorbar(im23)
+            img_path = 'scale_image_class_fixed_pixel%d_%d.png'%(pixel_size, count)
+            fig.savefig(img_path)
+
+        print('==========================================================================')
+        count += 1
+
+        # if len(speed_array_final_self) == 0 or len(speed_array_final_20) == 0 or len(speed_array_final_50) == 0 or len(speed_array_final_80) == 0:
+        #     continue
+        # if np.isnan(count_array_self).any() == True or np.isnan(count_array_20).any() == True or np.isnan(count_array_50).any() == True or np.isnan(count_array_80).any() == True:
+        #     continue
+        
+        TITS_image_1feature_20.append([speed_array_final_20])
+        TITS_image_2feature_20.append([speed_array_final_20, count_array_20])
+        TITS_image_3feature_20.append([speed_array_final_20, count_array_20, acc_array_final_20])
+        TITS_image_3feature2_20.append([speed_array_final_20, count_array_20, bearing_array_final_20])
+        TITS_image_4feature_20.append([speed_array_final_20, count_array_20, acc_array_final_20, bearing_array_final_20])
+        TITS_image_5feature_20.append([speed_array_final_20, count_array_20, acc_array_final_20, bearing_array_final_20, bearing_rate_array_final_20])
+        TITS_image_6feature_20.append([speed_array_final_20, count_array_20, acc_array_final_20, bearing_array_final_20, bearing_rate_array_final_20, deltatime_array_final_20])      
+        
+        TITS_image_1feature_50.append([speed_array_final_50])
+        TITS_image_2feature_50.append([speed_array_final_50, count_array_50])
+        TITS_image_3feature_50.append([speed_array_final_50, count_array_50, acc_array_final_50])
+        TITS_image_3feature2_50.append([speed_array_final_50, count_array_50, bearing_array_final_50])
+        TITS_image_4feature_50.append([speed_array_final_50, count_array_50, acc_array_final_50, bearing_array_final_50])
+        TITS_image_5feature_50.append([speed_array_final_50, count_array_50, acc_array_final_50, bearing_array_final_50, bearing_rate_array_final_50])
+        TITS_image_6feature_50.append([speed_array_final_50, count_array_50, acc_array_final_50, bearing_array_final_50, bearing_rate_array_final_50, deltatime_array_final_50])      
+        
+        TITS_image_1feature_80.append([speed_array_final_80])
+        TITS_image_2feature_80.append([speed_array_final_80, count_array_80])
+        TITS_image_3feature_80.append([speed_array_final_80, count_array_80, acc_array_final_80])
+        TITS_image_3feature2_80.append([speed_array_final_80, count_array_80, bearing_array_final_80])
+        TITS_image_4feature_80.append([speed_array_final_80, count_array_80, acc_array_final_80, bearing_array_final_80])
+        TITS_image_5feature_80.append([speed_array_final_80, count_array_80, acc_array_final_80, bearing_array_final_80, bearing_rate_array_final_80])
+        TITS_image_6feature_80.append([speed_array_final_80, count_array_80, acc_array_final_80, bearing_array_final_80, bearing_rate_array_final_80, deltatime_array_final_80])      
+        
+        label_list.append(trip[1])
+    
+    return TITS_image_1feature_20, TITS_image_2feature_20, TITS_image_3feature_20, TITS_image_3feature2_20, TITS_image_4feature_20, TITS_image_5feature_20, TITS_image_6feature_20, \
+        TITS_image_1feature_50, TITS_image_2feature_50, TITS_image_3feature_50, TITS_image_3feature2_50, TITS_image_4feature_50, TITS_image_5feature_50, TITS_image_6feature_50, \
+        TITS_image_1feature_80, TITS_image_2feature_80, TITS_image_3feature_80, TITS_image_3feature2_80, TITS_image_4feature_80, TITS_image_5feature_80, TITS_image_6feature_80, \
+        label_list
+
+
+def traj_to_image_shift_multiscale(traj_data, max_lat, max_lon, scale_):
+
+    count = 0
+
+    label_list = []
+    # self
+    TITS_image_1feature = []
+    TITS_image_2feature = []
+    TITS_image_3feature = []
+    TITS_image_3feature2 = []
+    TITS_image_4feature = []
+    TITS_image_5feature = []
+    TITS_image_6feature = []
+    
+    for index, trip in enumerate(traj_data):
+    
+        # self
+        speed_array_final_self, bearing_array_final_self, acc_array_final_self, deltatime_array_final_self, \
+            count_array_self, bearing_rate_array_final_self = feature_array(trip=trip, scale_=scale_, max_lat=max_lat, max_lon=max_lon)
+
+        visualize = False
+        if visualize:
+            image_count = 0
+            fig = plt.figure()
+            fig.set_facecolor('white')
+            grid_shift = axes_grid1.AxesGrid(
+                fig, 111, nrows_ncols=(1, 6), axes_pad = 0.5, cbar_location = "right",
+                cbar_mode="each", cbar_size="15%", cbar_pad="5%",) 
+            im0 = grid_shift[image_count].imshow(speed_array_final_self, cmap='jet', interpolation='nearest')
+            grid_shift.cbar_axes[0].colorbar(im0)
+            im1 = grid_shift[image_count+1].imshow(bearing_array_final_self, cmap='jet', interpolation='nearest')
+            grid_shift.cbar_axes[1].colorbar(im1)
+            im2 = grid_shift[image_count+2].imshow(acc_array_final_self, cmap='jet', interpolation='nearest')
+            grid_shift.cbar_axes[2].colorbar(im2)
+            im3 = grid_shift[image_count+3].imshow(deltatime_array_final_self, cmap='jet', interpolation='nearest')
+            grid_shift.cbar_axes[3].colorbar(im3)
+            im4 = grid_shift[image_count+4].imshow(count_array_self, cmap='jet', interpolation='nearest')
+            grid_shift.cbar_axes[4].colorbar(im4)
+            im5 = grid_shift[image_count+5].imshow(bearing_rate_array_final_self, cmap='jet', interpolation='nearest')
+            grid_shift.cbar_axes[5].colorbar(im5)
+            img_path = '20_scale_image_class_fixed_pixel%d_%d.png'%(pixel_size, count)
+            fig.savefig(img_path)
+            count += 1
+
+        # check nan
+        if np.isnan(count_array_self).any() == True or np.isnan(speed_array_final_self).any() == True or np.isnan(deltatime_array_final_self).any() == True or np.isnan(bearing_array_final_self).any() == True:
+            continue
+        
+        TITS_image_1feature.append([speed_array_final_self])
+        TITS_image_2feature.append([speed_array_final_self, count_array_self])
+        TITS_image_3feature.append([speed_array_final_self, count_array_self, acc_array_final_self])
+        TITS_image_3feature2.append([speed_array_final_self, count_array_self, bearing_array_final_self])
+        TITS_image_4feature.append([speed_array_final_self, count_array_self, acc_array_final_self, bearing_array_final_self])
+        TITS_image_5feature.append([speed_array_final_self, count_array_self, acc_array_final_self, bearing_array_final_self, bearing_rate_array_final_self])
+        TITS_image_6feature.append([speed_array_final_self, count_array_self, acc_array_final_self, bearing_array_final_self, bearing_rate_array_final_self, deltatime_array_final_self])      
+        
+        label_list.append(trip[1])
+    
+    return TITS_image_1feature, TITS_image_2feature, TITS_image_3feature, TITS_image_3feature2, TITS_image_4feature, TITS_image_5feature, TITS_image_6feature, label_list
+
+
 
 other_features = True
 # normalize = True
@@ -822,74 +1208,113 @@ for i in range(len(trip_motion_all_user_with_label_test)):
     else:
         class_trip[trip_motion_all_user_with_label_test[i][1]].append(trip_motion_all_user_with_label_test[i])
 
-print([len(class_trip[k]) for k in class_trip])
+print([len(class_trip[k]) for k in class_trip], np.array([len(class_trip[k]) for k in class_trip]).sum())
 
-latlon_gap = None
-if latlon_gap == True:
-    max_class_all_gap = {}
-    min_class_all_gap = {}
-    all_lat_gap = []
-    all_lon_gap = []
-    for class_id in class_trip.keys():
-        temp = 0
-        k = -1
-        for i in range(len(class_trip[class_id])):
-            if max(class_trip[class_id][i][0][-2]) - min(class_trip[class_id][i][0][-2]) > temp:
-                temp = max(class_trip[class_id][i][0][-2]) - min(class_trip[class_id][i][0][-2])
-                k = i
+max_class_all_gap = {}
+min_class_all_gap = {}
+all_lat_gap = []
+all_lon_gap = []
+for class_id in class_trip.keys():
+    temp = 0
+    k = -1
+    for i in range(len(class_trip[class_id])):
+        if max(class_trip[class_id][i][0][-2]) - min(class_trip[class_id][i][0][-2]) > temp:
+            temp = max(class_trip[class_id][i][0][-2]) - min(class_trip[class_id][i][0][-2])
+            k = i
 
-        lat_gap = [(max(trip[0][-2]) - min(trip[0][-2])) % 360 for trip in class_trip[class_id]]
-        lon_gap = [(max(trip[0][-1]) - min(trip[0][-1])) % 360 for trip in class_trip[class_id]]
+    lat_gap = [(max(trip[0][-2]) - min(trip[0][-2])) % 360 for trip in class_trip[class_id]]
+    lon_gap = [(max(trip[0][-1]) - min(trip[0][-1])) % 360 for trip in class_trip[class_id]]
 
-        all_lat_gap += lat_gap
-        all_lon_gap += lon_gap
+    all_lat_gap += lat_gap
+    all_lon_gap += lon_gap
 
-        max_lat_gap_list = list(pd.Series(lat_gap).describe(percentiles=[0.05, 0.1, 0.2, 0.9, 1]))
-        max_lon_gap_list = list(pd.Series(lon_gap).describe(percentiles=[0.05, 0.1, 0.2, 0.9, 1]))
-        min_lat_gap_list = list(pd.Series(lat_gap).describe(percentiles=[0.05, 0.1, 1]))
-        min_lon_gap_list = list(pd.Series(lon_gap).describe(percentiles=[0.05, 0.1, 1]))
+    max_lat_gap_list = list(pd.Series(lat_gap).describe(percentiles=[0.05, 0.1, 0.2, 0.9, 1]))
+    max_lon_gap_list = list(pd.Series(lon_gap).describe(percentiles=[0.05, 0.1, 0.2, 0.9, 1]))
+    min_lat_gap_list = list(pd.Series(lat_gap).describe(percentiles=[0.05, 0.1, 1]))
+    min_lon_gap_list = list(pd.Series(lon_gap).describe(percentiles=[0.05, 0.1, 1]))
 
-        # get 30%-80% data
-        max_class_all_gap[class_id] = [max_lat_gap_list[-3], max_lon_gap_list[-3]]
-        min_class_all_gap[class_id] = [min_lat_gap_list[-3], min_lon_gap_list[-3]]
-
-    # print(f'max class_all_gap: {max_class_all_gap}; min class all gap: {min_class_all_gap}')
+    # get 30%-80% data
+    max_class_all_gap[class_id] = [max_lat_gap_list[-3], max_lon_gap_list[-3]]
+    min_class_all_gap[class_id] = [min_lat_gap_list[-3], min_lon_gap_list[-3]]
 
     # lat gap for all trips
-    print('Descriptive statistics for labeled all trip lat',  pd.Series(all_lat_gap).describe(percentiles=[0.05, 0.1, 0.2, 0.5, 0.6, 
-                                                                                            0.7, 0.8, 0.9, 1]))
-    print('Descriptive statistics for labeled all trip lon',  pd.Series(all_lon_gap).describe(percentiles=[0.05, 0.1, 0.2, 0.5, 0.6, 
-                                                                                            0.7, 0.8, 0.9, 1]))
+    lat_gap_top3 = pd.Series(all_lat_gap).describe(percentiles=[0.2, 0.5, 0.8]).tolist()[-4:-1]
+    lon_gap_top3 = pd.Series(all_lon_gap).describe(percentiles=[0.2, 0.5, 0.8]).tolist()[-4:-1]
 
 
 feature_max = feature_maxvalue()
 trip_motion_all_user_with_label_train = normalize(trip_motion_all_user_with_label_train)
 trip_motion_all_user_with_label_test = normalize(trip_motion_all_user_with_label_test)
 
+
+
+# 30%
+# max_lat = lat_gap_top3[0]
+# max_lon = lon_gap_top3[0]
+# scale_size = 20
+
+# # 50%
+# max_lat = lat_gap_top3[1]
+# max_lon = lon_gap_top3[1]
+# scale_size = 50
+
+# # 80%
+# max_lat = lat_gap_top3[2]
+# max_lon = lon_gap_top3[2]
+# scale_size = 80
+
 # train data
-train_TITS_image_1feature, train_TITS_image_2feature, train_TITS_image_3feature, \
-train_TITS_image_3feature2, train_TITS_image_4feature, train_TITS_image_5feature, \
-train_TITS_image_6feature, train_data_label, train_data_scale = \
-        traj_to_image_shift_scale(traj_data=trip_motion_all_user_with_label_train, shift=True)
+train_TITS_image_1feature_20, train_TITS_image_2feature_20, train_TITS_image_3feature_20, train_TITS_image_3feature2_20, train_TITS_image_4feature_20, \
+    train_TITS_image_5feature_20, train_TITS_image_6feature_20, train_TITS_image_1feature_50, train_TITS_image_2feature_50, train_TITS_image_3feature_50, train_TITS_image_3feature2_50, train_TITS_image_4feature_50, \
+    train_TITS_image_5feature_50, train_TITS_image_6feature_50, train_TITS_image_1feature_80, train_TITS_image_2feature_80, train_TITS_image_3feature_80, train_TITS_image_3feature2_80, train_TITS_image_4feature_80, \
+    train_TITS_image_5feature_80, train_TITS_image_6feature_80, train_data_label = traj_to_image_shift_multiscale_all(traj_data=trip_motion_all_user_with_label_train, lat_scale_list=lat_gap_top3, lon_scale_list=lon_gap_top3)
 ## test data
-test_TITS_image_1feature, test_TITS_image_2feature, test_TITS_image_3feature, \
-test_TITS_image_3feature2, test_TITS_image_4feature, test_TITS_image_5feature, \
-test_TITS_image_6feature, test_data_label, test_data_scale = \
-        traj_to_image_shift_scale(traj_data=trip_motion_all_user_with_label_test, shift=True)
-
-
-# print(len(train_TITS_image_5feature), len(train_data_label))
-print(len(test_TITS_image_5feature), len(test_data_label))
+test_TITS_image_1feature_20, test_TITS_image_2feature_20, test_TITS_image_3feature_20, test_TITS_image_3feature2_20, test_TITS_image_4feature_20, \
+    test_TITS_image_5feature_20, test_TITS_image_6feature_20, test_TITS_image_1feature_50, test_TITS_image_2feature_50, test_TITS_image_3feature_50, test_TITS_image_3feature2_50, test_TITS_image_4feature_50, \
+    test_TITS_image_5feature_50, test_TITS_image_6feature_50, test_TITS_image_1feature_80, test_TITS_image_2feature_80, test_TITS_image_3feature_80, test_TITS_image_3feature2_80, test_TITS_image_4feature_80, \
+    test_TITS_image_5feature_80, test_TITS_image_6feature_80, test_data_label = traj_to_image_shift_multiscale_all(traj_data=trip_motion_all_user_with_label_test, lat_scale_list=lat_gap_top3, lon_scale_list=lon_gap_top3)
 
 # # # # save the file
-filename_TITS_123456 = '/home/xieyuan/Transportation-mode/Traj2Image/datafiles/Geolife/trips_traj2image_trip_shift_rescale_%dclass_pixelsize%d_back0_180bearing_unfixed_TITS.pickle'%(num_class, pixel_size)
-with open(filename_TITS_123456, 'wb') as f:
-    pickle.dump([train_TITS_image_1feature, train_TITS_image_2feature, train_TITS_image_3feature, 
-                 train_TITS_image_3feature2, train_TITS_image_4feature, train_TITS_image_5feature, 
-                 train_TITS_image_6feature, train_data_label, train_data_scale,
-                 test_TITS_image_1feature, test_TITS_image_2feature, test_TITS_image_3feature, 
-                 test_TITS_image_3feature2, test_TITS_image_4feature, test_TITS_image_5feature, 
-                 test_TITS_image_6feature, test_data_label, test_data_scale], f)
+# 20
+scale_size = 20
+filename_TITS_1233456_20 = '/home/xieyuan/Transportation-mode/Traj2Image/datafiles/Geolife/trips_traj2image_trip_shift_rescale_%dclass_pixelsize%d_back0_180bearing_unfixed_TITS_scale%d.pickle'%(num_class, pixel_size, scale_size)
+with open(filename_TITS_1233456_20, 'wb') as f:
+    pickle.dump([train_TITS_image_1feature_20, train_TITS_image_2feature_20, train_TITS_image_3feature_20, 
+                 train_TITS_image_3feature2_20, train_TITS_image_4feature_20, train_TITS_image_5feature_20, 
+                 train_TITS_image_6feature_20, train_data_label,
+                 test_TITS_image_1feature_20, test_TITS_image_2feature_20, test_TITS_image_3feature_20, 
+                 test_TITS_image_3feature2_20, test_TITS_image_4feature_20, test_TITS_image_5feature_20, 
+                 test_TITS_image_6feature_20, test_data_label], f)
+
+# 50
+scale_size = 50
+filename_TITS_1233456_50 = '/home/xieyuan/Transportation-mode/Traj2Image/datafiles/Geolife/trips_traj2image_trip_shift_rescale_%dclass_pixelsize%d_back0_180bearing_unfixed_TITS_scale%d.pickle'%(num_class, pixel_size, scale_size)
+with open(filename_TITS_1233456_50, 'wb') as f:
+    pickle.dump([train_TITS_image_1feature_50, train_TITS_image_2feature_50, train_TITS_image_3feature_50, 
+                 train_TITS_image_3feature2_50, train_TITS_image_4feature_50, train_TITS_image_5feature_50, 
+                 train_TITS_image_6feature_50, train_data_label,
+                 test_TITS_image_1feature_50, test_TITS_image_2feature_50, test_TITS_image_3feature_50, 
+                 test_TITS_image_3feature2_50, test_TITS_image_4feature_50, test_TITS_image_5feature_50, 
+                 test_TITS_image_6feature_50, test_data_label], f)
+
+# 80
+scale_size = 80
+filename_TITS_1233456_80 = '/home/xieyuan/Transportation-mode/Traj2Image/datafiles/Geolife/trips_traj2image_trip_shift_rescale_%dclass_pixelsize%d_back0_180bearing_unfixed_TITS_scale%d.pickle'%(num_class, pixel_size, scale_size)
+with open(filename_TITS_1233456_80, 'wb') as f:
+    pickle.dump([train_TITS_image_1feature_80, train_TITS_image_2feature_80, train_TITS_image_3feature_80, 
+                 train_TITS_image_3feature2_80, train_TITS_image_4feature_80, train_TITS_image_5feature_80, 
+                 train_TITS_image_6feature_80, train_data_label,
+                 test_TITS_image_1feature_80, test_TITS_image_2feature_80, test_TITS_image_3feature_80, 
+                 test_TITS_image_3feature2_80, test_TITS_image_4feature_80, test_TITS_image_5feature_80, 
+                 test_TITS_image_6feature_80, test_data_label], f)
+
+import pdb; pdb.set_trace()
+
+
+
+
+
+
 
 with open(filename_TITS_123456, 'rb') as f:
     dataset = pickle.load(f)
@@ -994,6 +1419,6 @@ def resample_traj(TITSdata_nfeature, data_label, random, sample_size):
             plt.title('fig.%d'%count)
             count += 1
 
-resample_traj(test_TITSdata_5feature, test_data_label, random=False, sample_size=5)
+# resample_traj(test_TITSdata_5feature, test_data_label, random=False, sample_size=5)
 
 
